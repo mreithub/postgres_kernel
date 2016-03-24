@@ -100,7 +100,7 @@ class PostgresKernel(Kernel):
 			msg = ', '.join('{0}={1}'.format(k,v) for k,v in self.connInfo.items())
 		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': msg})
 
-	def printQuery(self, query, silent=False, params=None):
+	def printQuery(self, query, silent=False, params=None, rowCount=True):
 		if self.conn == None:
 			# connect to the default database
 			self.connect(['nopassword'])
@@ -116,7 +116,7 @@ class PostgresKernel(Kernel):
 			self.lastQueryDurationFormatted = self._formatDuration(duration)
 
 			if not silent:
-				self._sendResultTable(cur)
+				self._sendResultTable(cur, rowCount)
 
 
 	def _formatDuration(self, duration):
@@ -170,7 +170,7 @@ class PostgresKernel(Kernel):
 		}
 		return rc
 
-	def _sendResultTable(self, cur):
+	def _sendResultTable(self, cur, rowCount=True):
 		""" Sends a query result as HTML table. If there is none, only the result count will be displayed """
 		if cur.description != None:
 			# we've got results => print them as a table
@@ -187,14 +187,16 @@ class PostgresKernel(Kernel):
 
 			data = {'source': 'psql', 'data': {'text/html': html}}
 			self.send_response(self.iopub_socket, 'display_data', data)
-		# print row count
-		if cur.rowcount >= 0:
-			text = '{0} rows'.format(cur.rowcount)
-		else:
-			text = 'ok' # begin, rollback, ... will set the row count to -1
 
-		text += ' (took {0})'.format(self.lastQueryDurationFormatted)
-		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': text})
+		if rowCount:
+			# print row count
+			if cur.rowcount >= 0:
+				text = '{0} rows'.format(cur.rowcount)
+			else:
+				text = 'ok' # begin, rollback, ... will set the row count to -1
+
+			text += ' (took {0})'.format(self.lastQueryDurationFormatted)
+			self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': text})
 
 
 if __name__ == '__main__':
