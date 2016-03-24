@@ -1,8 +1,22 @@
 
 def inspectTable(kernel, name):
-	# TODO add some more info (not null, defaults, indexes, foreign keys, other constraints, inheritance)
-	kernel.printQuery("""SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type"
-		FROM pg_attribute a WHERE attrelid = %s::regclass AND attnum >= 0;""", params=(name,))
+	# TODO print table name (but only if the table actually exists)
+#	kernel.printHtml('<h4>{0}</h4>'.format(name))
+
+	# List columns
+	kernel.printQuery("""
+SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type",
+array_to_string(ARRAY[
+	(CASE attnotnull WHEN true THEN 'not null' ELSE '' END),
+	(CASE WHEN adsrc IS NOT NULL THEN 'default ' ELSE '' END) || adsrc
+], ' ') AS "Modifiers"
+FROM pg_attribute a LEFT JOIN pg_attrdef ad ON (a.attrelid = ad.adrelid AND a.attnum = ad.adnum)
+WHERE attrelid = %s::regclass AND attnum > 0
+""", params=(name,), rowCount=False)
+
+	# TODO add some more info (indexes, foreign keys, other constraints, inheritance)
+	
+
 
 def listObjects(kernel, args, details, types=('r','v','m','S','f','')):
 	params = set()
