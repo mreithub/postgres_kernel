@@ -1,9 +1,60 @@
+import itertools
 
-def inspectTable(kernel, name):
-	# TODO print table name (but only if the table actually exists)
-#	kernel.printHtml('<h4>{0}</h4>'.format(name))
+def _getHtmlCheckConstraints(kernel, tblName):
+	# check constraints
+	rows = list(kernel.yieldQuery('''
+SELECT r.conname, pg_catalog.pg_get_constraintdef(r.oid, true)
+FROM pg_catalog.pg_constraint r
+WHERE r.conrelid = %s::regclass AND r.contype = 'c'
+ORDER BY 1;''', (tblName,)))
+	if len(rows) > 0:
+		yield '<h4>Check constraints:</h4><pre>'
+		for row in rows:
+			yield '  "{0}" {1}'.format(*row)
+		yield '</pre>'
 
-	# List columns
+
+def _getHtmlIndexes(kernel, tblName):
+	rows = list(kernel.yieldQuery('''
+SELECT c2.relname, pg_catalog.pg_get_constraintdef(con.oid, true)
+FROM pg_catalog.pg_class c, pg_catalog.pg_class c2, pg_catalog.pg_index i
+  LEFT JOIN pg_catalog.pg_constraint con ON (conrelid = i.indrelid AND conindid = i.indexrelid AND contype IN ('p','u','x'))
+WHERE c.oid = %s::regclass AND c.oid = i.indrelid AND i.indexrelid = c2.oid
+ORDER BY i.indisprimary DESC, i.indisunique DESC, c2.relname;
+''', (tblName,)))
+	if len(rows) > 0:
+		yield '<h4>Indexes:</h4><pre>'
+		for row in rows:
+			yield '  "{0}" {1}'.format(*row)
+		yield '</pre>'
+
+
+def _getHtmlInheritance(kernel, tblName):
+	# inheritance
+	rows = kernel.yieldQuery('''
+SELECT c.oid::pg_catalog.regclass FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i
+WHERE c.oid=i.inhparent AND i.inhrelid = %s::regclass ORDER BY inhseqno;''', (tblName,))
+	inh = ', '.join(row[0] for row in rows)
+	if len(inh) > 0:
+		yield '<b>Inherits</b>: <tt>{0}</tt>'.format(inh)
+
+
+def _getHtmlTriggers(kernel, tblName):
+	rows = list(kernel.yieldQuery('''
+SELECT t.tgname, pg_catalog.pg_get_triggerdef(t.oid, true), t.tgenabled, t.tgisinternal
+FROM pg_catalog.pg_trigger t
+WHERE t.tgrelid = %s::regclass AND (NOT t.tgisinternal OR (t.tgisinternal AND t.tgenabled = 'D'))
+ORDER BY 1''', (tblName,)))
+	if len(rows) > 0:
+		yield '<h4>Triggers:</h4><pre>'
+		for row in rows:
+			startPos = row[1].find(row[0]) # find trigger name in the 'CREATE TRIGGER' command and skip everything up until that point
+			yield '  {0}'.format(row[1][startPos:])
+		yield '</pre>'
+
+
+def _printHtmlColumns(kernel, tblName):
+	""" Print a HTML representation of a table's columns """
 	kernel.printQuery("""
 SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type",
 array_to_string(ARRAY[
@@ -12,10 +63,27 @@ array_to_string(ARRAY[
 ], ' ') AS "Modifiers"
 FROM pg_attribute a LEFT JOIN pg_attrdef ad ON (a.attrelid = ad.adrelid AND a.attnum = ad.adnum)
 WHERE attrelid = %s::regclass AND attnum > 0
-""", params=(name,), rowCount=False)
+""", params=(tblName,), rowCount=False)
 
-	# TODO add some more info (indexes, foreign keys, other constraints, inheritance)
+def _printHtmlDetails(kernel, tblName):
+	kernel.printData(html='\n'.join(itertools.chain(
+		_getHtmlIndexes(kernel, tblName),
+		# TODO add some more info (foreign keys, ...)
+		_getHtmlCheckConstraints(kernel, tblName),
+		_getHtmlTriggers(kernel, tblName),
+		_getHtmlInheritance(kernel, tblName)
+	)))
 	
+
+def inspectTable(kernel, name):
+	# TODO only print table name if the table actually exists
+	# TODO restructure this function to be a little more readable
+	kernel.printData(html='<h3>Table {0}</h3>'.format(name))
+
+	# List columns
+	_printHtmlColumns(kernel, name)
+
+	_printHtmlDetails(kernel, name)
 
 
 def listObjects(kernel, args, details, types=('r','v','m','S','f','')):
