@@ -1,3 +1,4 @@
+
 def inspectTable(kernel, name):
 	# TODO add some more info (not null, defaults, indexes, foreign keys, other constraints, inheritance)
 	kernel._runQuery("""SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type"
@@ -73,7 +74,11 @@ def parse(kernel, cmd, silent):
 		'dv': ('v', '')  # list views
 	}
 
-	if cmd == 'd' and len(args) == 1:
+	if cmd in ['c', 'connect']:
+		kernel.connect(args)
+	elif cmd == 'conninfo':
+		kernel.connectionInfo()
+	elif cmd == 'd' and len(args) == 1:
 		inspectTable(kernel, args[0])
 	elif cmd in listCmds:
 		listObjects(kernel, args, details, listCmds[cmd])

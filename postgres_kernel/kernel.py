@@ -3,7 +3,7 @@ from postgres_kernel import commands
 from ipykernel.kernelbase import Kernel
 from ipython_genutils import py3compat
 from IPython import display
-import json
+import getpass
 import logging
 import psycopg2
 import traceback
@@ -24,8 +24,7 @@ class PostgresKernel(Kernel):
 	def __init__(self, *args, **kwargs):
 		super(PostgresKernel, self).__init__(*args, **kwargs)
 		# TODO find a way to let users configure the psql settings
-		self.conn = psycopg2.connect("dbname=manuel")
-		self.conn.autocommit = True # let the user handle transactions explicitly
+		self.conn = None
 
 	def do_execute(self, code, silent, store_history=True, user_expressions=None, allow_stdin=False):
 		rc = {
@@ -51,6 +50,56 @@ class PostgresKernel(Kernel):
 			logging.error(evalue)
 
 		return rc
+
+	def connect(self, args):
+		if self.conn != None:
+			self.conn.close()
+			self.conn = None
+
+		values = {
+			'host': 'localhost',
+			'port': 5432,
+			'user': 'postgres'
+		}
+
+		# parse args
+		kwargs = {}
+		flags = set()
+		nopwd = False
+		for k,v in ((arg.split('=',1)+[None])[:2] for arg in args):
+			if v != None:
+				kwargs[k] = v
+			else: flags.add(k)
+
+		# parse flags
+		for flag in flags:
+			if flag == 'nopassword':
+				if 'password' in kwargs:
+					raise Exception("you specified both a password and the nopassword flag!")
+				nopwd = True
+			else:
+				raise Exception("Unsupported flag (only 'nopassword' is supported right now)!")
+
+		# ask for a password if necessary
+		if not 'password' in kwargs and not nopwd:
+			kwargs['password'] = getpass.getpass('Database password: ')
+
+		values.update(kwargs)
+
+		self.conn = psycopg2.connect(**values)
+		self.conn.autocommit = True # let the user handle transactions explicitly
+		self.connInfo = kwargs
+
+		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': 'ok'})
+
+
+	def connectionInfo(self):
+		if self.conn == None:
+			msg = '-- not connected (use \connect to initiate a connection) --'
+		else:
+			msg = ', '.join('{0}={1}'.format(k,v) for k,v in self.connInfo.items())
+		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': msg})
+
 
 	def _formatDuration(self, duration):
 		""" Takes a integer or floating point duration in seconds and converts it to
@@ -104,8 +153,10 @@ class PostgresKernel(Kernel):
 		return rc
 
 	def _runQuery(self, query, silent=False, params=set()):
-#		logging.error('QUERY: {0}'.format(query))
-#		logging.error(' -params: {0}'.format(params))
+		if self.conn == None:
+			# connect to the default database
+			self.connect(['nopassword'])
+
 		with self.conn.cursor() as cur: 
 			startTime = time.time()
 			cur.execute(query, params)
