@@ -39,7 +39,7 @@ class PostgresKernel(Kernel):
 			if code.startswith('\\'):
 				commands.parse(self, code, silent)
 			else:
-				self._runQuery(code, silent)
+				self.printQuery(code, silent)
 
 		except:
 			# TODO don't print a traceback for simple postgres errors
@@ -100,6 +100,24 @@ class PostgresKernel(Kernel):
 			msg = ', '.join('{0}={1}'.format(k,v) for k,v in self.connInfo.items())
 		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': msg})
 
+	def printQuery(self, query, silent=False, params=None):
+		if self.conn == None:
+			# connect to the default database
+			self.connect(['nopassword'])
+
+		#logging.debug('--Q: {0}'.format(query))
+		#logging.debug(' -p: {0}'.format(params))
+		with self.conn.cursor() as cur: 
+			startTime = time.time()
+			cur.execute(query, params)
+			duration = time.time() - startTime
+
+			self.lastQueryDuration = duration
+			self.lastQueryDurationFormatted = self._formatDuration(duration)
+
+			if not silent:
+				self._sendResultTable(cur)
+
 
 	def _formatDuration(self, duration):
 		""" Takes a integer or floating point duration in seconds and converts it to
@@ -151,24 +169,6 @@ class PostgresKernel(Kernel):
 			'evalue': py3compat.safe_unicode(evalue)
 		}
 		return rc
-
-	def _runQuery(self, query, silent=False, params=None):
-		if self.conn == None:
-			# connect to the default database
-			self.connect(['nopassword'])
-
-		#logging.debug('--Q: {0}'.format(query))
-		#logging.debug(' -p: {0}'.format(params))
-		with self.conn.cursor() as cur: 
-			startTime = time.time()
-			cur.execute(query, params)
-			duration = time.time() - startTime
-
-			self.lastQueryDuration = duration
-			self.lastQueryDurationFormatted = self._formatDuration(duration)
-
-			if not silent:
-				self._sendResultTable(cur)
 
 	def _sendResultTable(self, cur):
 		""" Sends a query result as HTML table. If there is none, only the result count will be displayed """

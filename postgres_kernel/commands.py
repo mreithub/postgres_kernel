@@ -1,7 +1,7 @@
 
 def inspectTable(kernel, name):
 	# TODO add some more info (not null, defaults, indexes, foreign keys, other constraints, inheritance)
-	kernel._runQuery("""SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type"
+	kernel.printQuery("""SELECT a.attname AS "Column", format_type(a.atttypid, a.atttypmod) AS "Type"
 		FROM pg_attribute a WHERE attrelid = %s::regclass AND attnum >= 0;""", params=(name,))
 
 def listObjects(kernel, args, details, types=('r','v','m','S','f','')):
@@ -26,7 +26,7 @@ AND pg_catalog.pg_table_is_visible(c.oid)"""
 	else:
 		raise Exception("Too many arguments!")
 
-	kernel._runQuery('''
+	kernel.printQuery('''
 SELECT n.nspname as "Schema",
 c.relname as "Name",
 CASE c.relkind WHEN 'r' THEN 'table' WHEN 'v' THEN 'view' WHEN 'm' THEN 'materialized view' WHEN 'i' THEN 'index' WHEN 'S' THEN 'sequence' WHEN 's' THEN 'special' WHEN 'f' THEN 'foreign table' END as "Type",
@@ -44,7 +44,7 @@ def listSchemas(kernel, details):
 pg_catalog.array_to_string(n.nspacl, E'\n') AS "Access privileges",
 pg_catalog.obj_description(n.oid, 'pg_namespace') AS "Description" """
 
-	kernel._runQuery("""
+	kernel.printQuery("""
 SELECT n.nspname AS "Name",
 pg_catalog.pg_get_userbyid(n.nspowner) AS "Owner"{details}
 FROM pg_catalog.pg_namespace n
