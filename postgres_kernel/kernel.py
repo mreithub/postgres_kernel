@@ -132,7 +132,7 @@ class PostgresKernel(Kernel):
 			if not silent:
 				self._sendResultTable(cur, rowCount)
 
-	def yieldQuery(self, query):
+	def yieldQuery(self, query, params=None):
 		""" Generator function yielding the result rows one by one """
 		# TODO try to deduplicate code in printQuery()
 		if self.conn == None:
