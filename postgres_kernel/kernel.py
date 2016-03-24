@@ -152,11 +152,13 @@ class PostgresKernel(Kernel):
 		}
 		return rc
 
-	def _runQuery(self, query, silent=False, params=set()):
+	def _runQuery(self, query, silent=False, params=None):
 		if self.conn == None:
 			# connect to the default database
 			self.connect(['nopassword'])
 
+		#logging.debug('--Q: {0}'.format(query))
+		#logging.debug(' -p: {0}'.format(params))
 		with self.conn.cursor() as cur: 
 			startTime = time.time()
 			cur.execute(query, params)
