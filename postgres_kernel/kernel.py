@@ -90,7 +90,7 @@ class PostgresKernel(Kernel):
 		self.conn.autocommit = True # let the user handle transactions explicitly
 		self.connInfo = kwargs
 
-		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': 'ok'})
+		self.printStream('ok')
 
 
 	def connectionInfo(self):
@@ -98,7 +98,21 @@ class PostgresKernel(Kernel):
 			msg = '-- not connected (use \connect to initiate a connection) --'
 		else:
 			msg = ', '.join('{0}={1}'.format(k,v) for k,v in self.connInfo.items())
-		self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': msg})
+		self.printStream(msg)
+
+	def printData(self, html=None, text=None):
+		""" Send data to be displayed in the frontend """
+		data = {}
+		if html != None:
+			data['text/html'] = html
+		if text != None:
+			data['text/plain'] = text
+
+		self.send_response(self.iopub_socket, 'display_data', {'source': 'psql', 'data': data})
+
+	def printStream(self, data, stream='stdout'):
+		self.send_response(self.iopub_socket, 'stream', {'name': stream, 'text': data})
+
 
 	def printQuery(self, query, silent=False, params=None, rowCount=True):
 		if self.conn == None:
@@ -118,6 +132,23 @@ class PostgresKernel(Kernel):
 			if not silent:
 				self._sendResultTable(cur, rowCount)
 
+	def yieldQuery(self, query):
+		""" Generator function yielding the result rows one by one """
+		# TODO try to deduplicate code in printQuery()
+		if self.conn == None:
+			# connect to the default database
+			self.connect(['nopassword'])
+
+		with self.conn.cursor() as cur: 
+			startTime = time.time()
+			cur.execute(query, params)
+			duration = time.time() - startTime
+
+			self.lastQueryDuration = duration
+			self.lastQueryDurationFormatted = self._formatDuration(duration)
+
+			for row in cur:
+				yield row
 
 	def _formatDuration(self, duration):
 		""" Takes a integer or floating point duration in seconds and converts it to
@@ -186,7 +217,7 @@ class PostgresKernel(Kernel):
 			html = '<table><tr>{0}</tr>{1}</table>'.format(''.join(headers), ''.join(data))
 
 			data = {'source': 'psql', 'data': {'text/html': html}}
-			self.send_response(self.iopub_socket, 'display_data', data)
+			self.printData(html=html)
 
 		if rowCount:
 			# print row count
@@ -196,7 +227,7 @@ class PostgresKernel(Kernel):
 				text = 'ok' # begin, rollback, ... will set the row count to -1
 
 			text += ' (took {0})'.format(self.lastQueryDurationFormatted)
-			self.send_response(self.iopub_socket, 'stream', {'name': 'stdout', 'text': text})
+			self.printStream(text)
 
 
 if __name__ == '__main__':
