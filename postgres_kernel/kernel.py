@@ -1,3 +1,5 @@
+from postgres_kernel import commands
+
 from ipykernel.kernelbase import Kernel
 from ipython_genutils import py3compat
 from IPython import display
@@ -22,7 +24,7 @@ class PostgresKernel(Kernel):
 	def __init__(self, *args, **kwargs):
 		super(PostgresKernel, self).__init__(*args, **kwargs)
 		# TODO find a way to let users configure the psql settings
-		self.conn = psycopg2.connect("dbname=postgres")
+		self.conn = psycopg2.connect("dbname=manuel")
 		self.conn.autocommit = True # let the user handle transactions explicitly
 
 	def do_execute(self, code, silent, store_history=True, user_expressions=None, allow_stdin=False):
@@ -34,19 +36,19 @@ class PostgresKernel(Kernel):
 			'user_expressions': {}
 		}
 
-		with self.conn.cursor() as cur:
-			try:
-				self._runQuery(cur, code)
-				if not silent:
-					self._sendResultTable(cur)
+		try:
+			if code.startswith('\\'):
+				commands.parse(self, code, silent)
+			else:
+				self._runQuery(code, silent)
 
-			except:
-				# TODO don't print a traceback for simple postgres errors
-				etype, evalue, tb = sys.exc_info()
-				tb_list = traceback.format_exception(etype, evalue, tb)
-				rc['status'] = 'error'
-				self.send_response(self.iopub_socket, 'error', self._formatException(etype, evalue, tb_list))
-				logging.error(evalue)
+		except:
+			# TODO don't print a traceback for simple postgres errors
+			etype, evalue, tb = sys.exc_info()
+			tb_list = traceback.format_exception(etype, evalue, tb)
+			rc['status'] = 'error'
+			self.send_response(self.iopub_socket, 'error', self._formatException(etype, evalue, tb_list))
+			logging.error(evalue)
 
 		return rc
 
@@ -101,13 +103,19 @@ class PostgresKernel(Kernel):
 		}
 		return rc
 
-	def _runQuery(self, cur, query):
-		startTime = time.time()
-		cur.execute(query)
-		duration = time.time() - startTime
+	def _runQuery(self, query, silent=False, params=set()):
+#		logging.error('QUERY: {0}'.format(query))
+#		logging.error(' -params: {0}'.format(params))
+		with self.conn.cursor() as cur: 
+			startTime = time.time()
+			cur.execute(query, params)
+			duration = time.time() - startTime
 
-		self.lastQueryDuration = duration
-		self.lastQueryDurationFormatted = self._formatDuration(duration)
+			self.lastQueryDuration = duration
+			self.lastQueryDurationFormatted = self._formatDuration(duration)
+
+			if not silent:
+				self._sendResultTable(cur)
 
 	def _sendResultTable(self, cur):
 		""" Sends a query result as HTML table. If there is none, only the result count will be displayed """
