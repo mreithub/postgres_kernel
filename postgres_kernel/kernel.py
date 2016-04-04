@@ -41,8 +41,16 @@ class PostgresKernel(Kernel):
 			else:
 				self.printQuery(code, silent)
 
+		# TODO add a little error formatting
+		except psycopg2.DataError as e:
+			self.printStream("Data error(code {0}):\n{1}".format(e.pgcode, e.pgerror), 'stderr')
+		except psycopg2.IntegrityError as e:
+			self.printStream("Integrity error(code {0}):\n{1}".format(e.pgcode, e.pgerror), 'stderr')
+		except psycopg2.InternalError as e:
+			self.printStream("Internal error(code {0}):\n{1}".format(e.pgcode, e.pgerror), 'stderr')
+		except psycopg2.ProgrammingError as e:
+			self.printStream("Programming error(code {0}):\n{1}".format(e.pgcode, e.pgerror), 'stderr')
 		except:
-			# TODO don't print a traceback for simple postgres errors
 			etype, evalue, tb = sys.exc_info()
 			tb_list = traceback.format_exception(etype, evalue, tb)
 			rc['status'] = 'error'
